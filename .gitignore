@@ -1,0 +1,138 @@
+# 🔐 SECRETS E CONFIGURAÇÕES SENSÍVEIS (NUNCA VERSIONAR!)
+.env
+.env.local
+.env.production
+.secrets.toml
+.config.json
+credentials.json
+service_account.json
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+
+# 🐍 PYTHON
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# 🗄️ DADOS DO ERP (CSVs e Cache)
+data/raw/             # CSVs originais do ERP
+data/processed/cache/ # Cache de dados processados
+data/processed/*.parquet
+data/processed/*.feather
+data/processed/*.pkl
+!data/raw/.gitkeep    # Mantém a pasta mas ignora conteúdo
+!data/processed/.gitkeep
+
+# 📊 ARQUIVOS DE DADOS GRANDES
+*.csv
+*.xlsx
+*.xls
+*.parquet
+*.feather
+*.h5
+*.hdf5
+*.db
+*.sqlite
+*.sqlite3
+
+# 🐍 VIRTUAL ENVS
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+pythonenv*
+.python-version
+
+# 🛠️ POETRY
+.poetry/
+.pytest_cache/
+
+# 📝 EDITORES/IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.code-workspace
+
+# 📓 JUPYTER NOTEBOOKS
+.ipynb_checkpoints/
+*.ipynb
+
+# 📈 CACHE E LOGS
+.cache/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# 🚀 STREAMLIT
+.streamlit/secrets.toml   # CRÍTICO: NUNCA VERSIONAR SECRETS!
+
+# 🗂️ BACKUPS E TEMPORÁRIOS
+*.bak
+*.tmp
+*.temp
+*.backup
+*.old
+
+# 📦 DOCKER
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# 🧪 TESTES
+test_output/
+reports/
+
+# 🔍 MYPY
+.mypy_cache/
+
+# 📊 DOCS
+_build/
+.sphinx/
+
+# 🏗️ BUILD OUTPUT
+out/
+target/
+dist/
+release/
+
+# 🎨 ASSETS TEMPORÁRIOS
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.pdf
+*.zip
+*.tar.gz
+*.7z

@@ -1,0 +1,18 @@
+BACKUP DO BANCO DE DADOS ALPHAIND
+==================================================
+Data/Hora do backup: 2025-11-17 19:58:53.610149
+Banco: AlphaInd
+Servidor: db-rebualf.ddns.net,30201
+Usuário: Rebualf
+SQL Server: Microsoft SQL Server 2012 (SP4) (KB4018073) - 11.0.7001.0 (X64) 
+	Aug 15 2017 10:23:29 
+	Copyright (c) Microsoft Corporation
+	Enterprise Edition (64-bit) on Windows NT 6.3 <X64> (Build 14393: )
+
+
+ESTATÍSTICAS:
+  • Tabelas totais: 814
+  • Tabelas exportadas: 813
+  • Erros: 1
+  • Registros totais exportados: 61132307
+  • Tamanho da pasta: 2595.11 MB
