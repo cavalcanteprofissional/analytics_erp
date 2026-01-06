@@ -16,7 +16,8 @@ dependencies = [
     "plotly (>=5.17.0)",
     "pyarrow (>=13.0.0)",
     "dask (>=2025.12.0,<2026.0.0)",
-    "streamlit-agraph (>=0.0.45,<0.0.46)"
+    "streamlit-agraph (>=0.0.45,<0.0.46)",
+    "streamlit-drawable-canvas (>=0.9.3,<0.10.0)"
 ]
 
 [tool.poetry]

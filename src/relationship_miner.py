@@ -1,18 +1,16 @@
-# src/relationship_miner.py
+# src/relationship_miner.py - VERSÃO CORRIGIDA
 import pandas as pd
 import networkx as nx
-import matplotlib.pyplot as plt
-from typing import Dict, List, Set, Any
+from typing import Dict, List, Any
 import re
 
 class RelationshipMiner:
     def __init__(self, tables_info: Dict):
         """
-        Inicializa o minerador com informações das tabelas
+        Minera relacionamentos entre tabelas do ERP
         
         Args:
             tables_info: Dicionário com informações das tabelas
-                        (do ERPSchemaAnalyzer.tables_info)
         """
         self.tables_info = tables_info
         self.graph = nx.DiGraph()
@@ -21,22 +19,25 @@ class RelationshipMiner:
     def mine_relationships(self) -> List[Dict]:
         """Minera relacionamentos usando múltiplas estratégias"""
         
-        # 1. Baseado em nomenclatura
+        # Limpa resultados anteriores
+        self.relationships_found = []
+        
+        # 1. Baseado em nomenclatura de colunas
         naming_rels = self._find_relationships_by_naming()
         
         # 2. Baseado em padrões do ERP
         pattern_rels = self._find_relationships_by_erp_patterns()
         
-        # 3. Baseado em dados (valores em comum) - opcional se tiver acesso a dados
-        data_rels = []  # Inicializa vazio
+        # 3. Baseado em dados comuns (se disponível)
+        data_rels = self._find_relationships_by_data_sampling()
         
-        # Combina todos
+        # Combina todos os relacionamentos
         all_relationships = naming_rels + pattern_rels + data_rels
         
         # Remove duplicatas
         unique_rels = self._deduplicate_relationships(all_relationships)
         
-        # Calcula confiança
+        # Calcula confiança para cada relacionamento
         for rel in unique_rels:
             rel['confidence'] = self._calculate_confidence(rel)
         
@@ -47,37 +48,51 @@ class RelationshipMiner:
         """Encontra relacionamentos baseados em nomes de colunas"""
         relationships = []
         
+        # Para cada tabela
         for table_name, info in self.tables_info.items():
+            if 'error' in info:
+                continue
+                
             columns = info.get('columns', [])
             
+            # Para cada coluna na tabela
             for column in columns:
                 col_lower = column.lower()
                 
-                # Verifica se coluna referencia outra tabela
+                # Verifica se a coluna referencia outra tabela
                 for other_table in self.tables_info:
                     if other_table == table_name:
                         continue
                     
                     other_lower = other_table.lower()
                     
-                    # Padrões comuns: TabelaID, IdTabela, CodTabela, etc.
+                    # Padrões comuns de chaves estrangeiras
                     patterns = [
+                        # Padrão: TabelaID (ex: ClienteID)
                         f"{other_lower}id",
-                        f"id{other_lower}",
                         f"{other_lower}_id",
+                        f"id{other_lower}",
                         f"id_{other_lower}",
+                        # Padrão: CodTabela (ex: CodCliente)
                         f"cod{other_lower}",
+                        f"cod_{other_lower}",
                         f"{other_lower}cod",
+                        # Padrão: TabelaCodigo (ex: ClienteCodigo)
+                        f"{other_lower}codigo",
+                        f"{other_lower}code",
                     ]
                     
-                    if any(pattern in col_lower for pattern in patterns):
-                        relationships.append({
-                            'source_table': table_name,
-                            'source_column': column,
-                            'target_table': other_table,
-                            'relationship_type': 'foreign_key_by_name',
-                            'evidence': f"Nome da coluna '{column}' referencia tabela '{other_table}'"
-                        })
+                    # Verifica se algum padrão corresponde
+                    for pattern in patterns:
+                        if pattern in col_lower:
+                            relationships.append({
+                                'source_table': table_name,
+                                'target_table': other_table,
+                                'relationship_column': column,
+                                'relationship_type': 'foreign_key_by_name',
+                                'evidence': f"Coluna '{column}' parece referenciar '{other_table}'"
+                            })
+                            break
         
         return relationships
     
@@ -85,158 +100,149 @@ class RelationshipMiner:
         """Usa padrões conhecidos de ERPs para inferir relacionamentos"""
         relationships = []
         
-        # Padrões comuns em ERPs de moda/confecção
-        erp_patterns = {
+        # Padrões comuns em ERPs (especialmente moda/confecção)
+        common_patterns = [
             # Clientes
-            ('cliente', 'pedido'): {'column_pattern': 'cliente', 'confidence': 0.9},
-            ('cliente', 'venda'): {'column_pattern': 'cliente', 'confidence': 0.9},
-            ('cliente', 'notafiscal'): {'column_pattern': 'cliente', 'confidence': 0.8},
+            (r'.*cliente.*', r'.*pedido.*', 'cliente', 0.9),
+            (r'.*cliente.*', r'.*venda.*', 'cliente', 0.9),
+            (r'.*cliente.*', r'.*orcamento.*', 'cliente', 0.8),
             
             # Produtos
-            ('produto', 'pedidoitem'): {'column_pattern': 'produto', 'confidence': 0.9},
-            ('produto', 'item'): {'column_pattern': 'produto', 'confidence': 0.9},
-            ('produto', 'estoque'): {'column_pattern': 'produto', 'confidence': 0.8},
+            (r'.*produto.*', r'.*pedido.*item.*', 'produto', 0.9),
+            (r'.*produto.*', r'.*item.*', 'produto', 0.8),
+            (r'.*produto.*', r'.*estoque.*', 'produto', 0.7),
             
             # Fornecedores
-            ('fornecedor', 'compra'): {'column_pattern': 'fornecedor', 'confidence': 0.9},
-            ('fornecedor', 'notafiscalcompra'): {'column_pattern': 'fornecedor', 'confidence': 0.8},
+            (r'.*fornecedor.*', r'.*compra.*', 'fornecedor', 0.9),
+            (r'.*fornecedor.*', r'.*nota.*compra.*', 'fornecedor', 0.8),
             
-            # Vendedores/Funcionários
-            ('vendedor', 'venda'): {'column_pattern': 'vendedor', 'confidence': 0.8},
-            ('funcionario', 'folha'): {'column_pattern': 'funcionario', 'confidence': 0.9},
+            # Vendedores
+            (r'.*vendedor.*', r'.*venda.*', 'vendedor', 0.8),
+            (r'.*funcionario.*', r'.*venda.*', 'funcionario', 0.7),
             
             # Financeiro
-            ('contabanco', 'lancamento'): {'column_pattern': 'conta', 'confidence': 0.8},
-            ('planoconta', 'lancamento'): {'column_pattern': 'planoconta', 'confidence': 0.8},
-        }
-        
-        # Normaliza nomes das tabelas para busca
-        table_names_lower = {name.lower(): name for name in self.tables_info.keys()}
-        
-        for (table1_pattern, table2_pattern), pattern_info in erp_patterns.items():
-            # Encontra tabelas que correspondem aos padrões
-            matching_tables1 = [name for name_lower, name in table_names_lower.items() 
-                              if table1_pattern in name_lower]
-            matching_tables2 = [name for name_lower, name in table_names_lower.items() 
-                              if table2_pattern in name_lower]
+            (r'.*conta.*', r'.*lancamento.*', 'conta', 0.8),
+            (r'.*banco.*', r'.*movimento.*', 'banco', 0.7),
             
-            # Para cada combinação de tabelas que correspondem aos padrões
+            # Pedidos
+            (r'.*pedido.*', r'.*nota.*fiscal.*', 'pedido', 0.8),
+            (r'.*pedido.*', r'.*entrega.*', 'pedido', 0.7),
+        ]
+        
+        # Para cada padrão
+        for pattern1, pattern2, column_pattern, base_confidence in common_patterns:
+            # Encontra tabelas que correspondem aos padrões
+            matching_tables1 = [t for t in self.tables_info.keys() 
+                              if re.match(pattern1, t, re.IGNORECASE)]
+            matching_tables2 = [t for t in self.tables_info.keys() 
+                              if re.match(pattern2, t, re.IGNORECASE)]
+            
+            # Para cada combinação
             for table1 in matching_tables1:
                 for table2 in matching_tables2:
                     if table1 == table2:
                         continue
                     
-                    # Procura coluna que corresponda ao padrão na tabela2
-                    columns2 = self.tables_info[table2].get('columns', [])
-                    
-                    for column in columns2:
+                    # Procura coluna que corresponda ao padrão
+                    cols2 = self.tables_info[table2].get('columns', [])
+                    for column in cols2:
                         col_lower = column.lower()
-                        pattern_lower = pattern_info['column_pattern'].lower()
                         
-                        # Verifica se coluna contém o padrão
-                        if pattern_lower in col_lower:
+                        # Verifica padrões na coluna
+                        if (column_pattern in col_lower or 
+                            f"id{column_pattern}" in col_lower or
+                            f"{column_pattern}id" in col_lower):
+                            
                             relationships.append({
-                                'source_table': table2,
-                                'target_table': table1,
+                                'source_table': table2,  # Tabela que tem a FK
+                                'target_table': table1,  # Tabela referenciada
                                 'relationship_column': column,
                                 'relationship_type': 'erp_pattern',
-                                'confidence': pattern_info['confidence'],
+                                'confidence': base_confidence,
                                 'evidence': f"Padrão ERP: {table2}.{column} -> {table1}"
                             })
         
         return relationships
     
-    def _identify_key_tables(self) -> Dict:
-        """Identifica tabelas-chave do ERP"""
-        key_tables = {}
+    def _find_relationships_by_data_sampling(self) -> List[Dict]:
+        """Tenta encontrar relacionamentos baseados em amostra de dados"""
+        relationships = []
         
-        for table_name, info in self.tables_info.items():
-            score = 0
-            
-            # Pontua baseado em:
-            # 1. Nome da tabela (tabelas mestres)
-            master_keywords = ['cliente', 'produto', 'fornecedor', 'funcionario', 
-                             'vendedor', 'cidade', 'estado', 'pais']
-            
-            if any(keyword in table_name.lower() for keyword in master_keywords):
-                score += 3
-            
-            # 2. Tamanho (tabelas mestres geralmente têm menos registros)
-            row_count = info.get('total_rows', 0)
-            if 100 < row_count < 1000000:  # Faixa típica de tabelas mestres
-                score += 2
-            
-            if score > 0:
-                key_tables[table_name] = {
-                    'score': score,
-                    'type': 'master' if score >= 3 else 'transaction'
-                }
+        # Limita a tabelas menores para performance
+        small_tables = []
+        for table, info in self.tables_info.items():
+            if 'error' not in info and info.get('total_rows', 0) < 10000:
+                small_tables.append(table)
         
-        return key_tables
+        # Limita a 20 tabelas para performance
+        small_tables = small_tables[:20]
+        
+        # Para cada par de tabelas
+        for i, table1 in enumerate(small_tables):
+            for table2 in small_tables[i+1:]:
+                # Procura colunas com nomes similares
+                cols1 = self.tables_info[table1].get('columns', [])
+                cols2 = self.tables_info[table2].get('columns', [])
+                
+                for col1 in cols1:
+                    for col2 in cols2:
+                        # Se as colunas têm nomes similares
+                        if (self._columns_match(col1, col2) and 
+                            self._looks_like_id_column(col1) and 
+                            self._looks_like_id_column(col2)):
+                            
+                            relationships.append({
+                                'source_table': table1,
+                                'target_table': table2,
+                                'relationship_column': f"{col1} ↔ {col2}",
+                                'relationship_type': 'data_pattern',
+                                'confidence': 0.6,
+                                'evidence': f"Colunas similares: {table1}.{col1} e {table2}.{col2}"
+                            })
+        
+        return relationships
     
-    def build_relationship_graph(self):
-        """Constrói grafo de relacionamentos"""
-        self.graph = nx.DiGraph()
+    def _columns_match(self, col1: str, col2: str) -> bool:
+        """Verifica se duas colunas parecem ser a mesma"""
+        col1_lower = col1.lower()
+        col2_lower = col2.lower()
         
-        for rel in self.relationships_found:
-            if rel.get('confidence', 0) > 0.3:  # Limiar mais baixo inicialmente
-                self.graph.add_edge(
-                    rel.get('source_table', ''),
-                    rel.get('target_table', ''),
-                    weight=rel.get('confidence', 0),
-                    column=rel.get('relationship_column', ''),
-                    type=rel.get('relationship_type', 'unknown')
-                )
+        # Se são exatamente iguais (ignorando case)
+        if col1_lower == col2_lower:
+            return True
         
-        return self.graph
+        # Remove sufixos comuns
+        col1_clean = re.sub(r'_(id|cod|code|key|num|nro)$', '', col1_lower)
+        col2_clean = re.sub(r'_(id|cod|code|key|num|nro)$', '', col2_lower)
+        
+        # Se são similares após limpeza
+        if col1_clean == col2_clean:
+            return True
+        
+        # Se uma contém a outra
+        if col1_clean in col2_clean or col2_clean in col1_clean:
+            return True
+        
+        return False
     
-    def visualize_relationships(self):
-        """Visualiza o grafo de relacionamentos"""
-        if len(self.graph.nodes()) == 0:
-            print("Grafo vazio. Execute build_relationship_graph() primeiro.")
-            return None
+    def _looks_like_id_column(self, column_name: str) -> bool:
+        """Verifica se uma coluna parece ser uma chave"""
+        col_lower = column_name.lower()
         
-        plt.figure(figsize=(15, 10))
+        id_keywords = ['id', 'cod', 'code', 'key', 'chave', 'numero', 'num', 'nro']
         
-        # Usa layout para melhor visualização
-        pos = nx.spring_layout(self.graph, k=1, iterations=50)
+        # Verifica se contém palavra-chave de ID
+        for keyword in id_keywords:
+            if keyword in col_lower:
+                return True
         
-        # Desenha nós com cores baseadas no tipo de tabela
-        node_colors = []
-        for node in self.graph.nodes():
-            if any(keyword in node.lower() for keyword in ['cliente', 'produto', 'fornecedor']):
-                node_colors.append('lightgreen')  # Tabelas mestres
-            elif any(keyword in node.lower() for keyword in ['pedido', 'venda', 'compra']):
-                node_colors.append('lightblue')   # Tabelas transacionais
-            else:
-                node_colors.append('lightgray')   # Outras
+        # Verifica padrões comuns
+        patterns = [r'.*id$', r'.*cod$', r'.*code$', r'id.*', r'cod.*']
+        for pattern in patterns:
+            if re.match(pattern, col_lower):
+                return True
         
-        nx.draw_networkx_nodes(self.graph, pos, node_size=500, 
-                              node_color=node_colors, alpha=0.8)
-        
-        # Desenha arestas
-        edges = self.graph.edges(data=True)
-        edge_colors = [data.get('weight', 0.5) for _, _, data in edges]
-        edge_widths = [data.get('weight', 0.5) * 3 for _, _, data in edges]
-        
-        nx.draw_networkx_edges(
-            self.graph, pos, 
-            edge_color=edge_colors,
-            edge_cmap=plt.cm.Blues,
-            width=edge_widths,
-            arrows=True,
-            arrowsize=15,
-            alpha=0.6
-        )
-        
-        # Labels
-        nx.draw_networkx_labels(self.graph, pos, font_size=9, font_weight='bold')
-        
-        plt.title("Relacionamentos Descobertos no ERP", fontsize=14)
-        plt.axis('off')
-        plt.tight_layout()
-        
-        return plt
+        return False
     
     def _deduplicate_relationships(self, relationships: List[Dict]) -> List[Dict]:
         """Remove relacionamentos duplicados"""
@@ -244,7 +250,9 @@ class RelationshipMiner:
         unique = []
         
         for rel in relationships:
-            key = (rel.get('source_table'), rel.get('target_table'))
+            # Cria chave única
+            key = (rel.get('source_table'), rel.get('target_table'), 
+                  rel.get('relationship_column', ''))
             
             if key not in seen:
                 seen.add(key)
@@ -260,68 +268,52 @@ class RelationshipMiner:
         evidence_weights = {
             'foreign_key_by_name': 0.8,
             'erp_pattern': 0.7,
-            'data_overlap': 0.6,
+            'data_pattern': 0.6,
             'implicit': 0.4
         }
         
         rel_type = relationship.get('relationship_type', 'implicit')
         confidence += evidence_weights.get(rel_type, 0.4)
         
-        # Bonus por padrões de nome na coluna
+        # Bonus por padrões específicos na coluna
         column = relationship.get('relationship_column', '').lower()
-        if any(pattern in column for pattern in ['id', 'cod', 'key', 'ref']):
-            confidence += 0.15
         
-        # Bonus se tabela alvo for identificada como master
-        target_table = relationship.get('target_table', '')
-        key_tables = self._identify_key_tables()
-        if target_table in key_tables and key_tables[target_table]['type'] == 'master':
+        # Bonus se coluna termina com ID
+        if column.endswith('id') or '_id' in column:
             confidence += 0.1
         
-        return min(confidence, 1.0)  # Limita a 1.0
+        # Bonus se coluna começa com ID
+        if column.startswith('id') or column.startswith('cod'):
+            confidence += 0.1
+        
+        # Bonus se tabela alvo é claramente uma tabela mestre
+        target = relationship.get('target_table', '').lower()
+        if any(kw in target for kw in ['cliente', 'produto', 'fornecedor', 'funcionario']):
+            confidence += 0.1
+        
+        # Limita a 1.0
+        return min(confidence, 1.0)
     
-    def get_relationships_by_table(self, table_name: str) -> Dict:
-        """Retorna relacionamentos envolvendo uma tabela específica"""
-        outgoing = [r for r in self.relationships_found 
-                   if r.get('source_table') == table_name]
-        incoming = [r for r in self.relationships_found 
-                   if r.get('target_table') == table_name]
+    def get_relationships_summary(self) -> Dict:
+        """Retorna resumo dos relacionamentos encontrados"""
+        if not self.relationships_found:
+            return {"total": 0}
+        
+        # Agrupa por tipo
+        by_type = {}
+        for rel in self.relationships_found:
+            rel_type = rel.get('relationship_type', 'unknown')
+            by_type[rel_type] = by_type.get(rel_type, 0) + 1
+        
+        # Conta por confiança
+        high_conf = sum(1 for r in self.relationships_found if r.get('confidence', 0) > 0.8)
+        medium_conf = sum(1 for r in self.relationships_found if 0.5 <= r.get('confidence', 0) <= 0.8)
+        low_conf = sum(1 for r in self.relationships_found if r.get('confidence', 0) < 0.5)
         
         return {
-            'outgoing': outgoing,
-            'incoming': incoming,
-            'total': len(outgoing) + len(incoming)
+            "total": len(self.relationships_found),
+            "by_type": by_type,
+            "high_confidence": high_conf,
+            "medium_confidence": medium_conf,
+            "low_confidence": low_conf
         }
-    
-    def suggest_joins(self, table1: str, table2: str) -> List[Dict]:
-        """Sugere possíveis joins entre duas tabelas"""
-        suggestions = []
-        
-        # Procura relacionamentos diretos
-        for rel in self.relationships_found:
-            if (rel.get('source_table') == table1 and rel.get('target_table') == table2) or \
-               (rel.get('source_table') == table2 and rel.get('target_table') == table1):
-                suggestions.append({
-                    'type': 'direct',
-                    'confidence': rel.get('confidence', 0),
-                    'column': rel.get('relationship_column', ''),
-                    'direction': f"{rel.get('source_table')} -> {rel.get('target_table')}"
-                })
-        
-        # Procura tabelas intermediárias
-        if not suggestions:
-            # Encontra caminhos no grafo
-            try:
-                paths = list(nx.all_simple_paths(self.graph, table1, table2, cutoff=2))
-                for path in paths:
-                    if len(path) == 3:  # A -> B -> C
-                        suggestions.append({
-                            'type': 'indirect',
-                            'path': ' -> '.join(path),
-                            'confidence': 0.5,  # Confiança menor para joins indiretos
-                            'suggestion': f"Junte {table1} com {path[1]}, depois com {table2}"
-                        })
-            except:
-                pass
-        
-        return sorted(suggestions, key=lambda x: x.get('confidence', 0), reverse=True)
